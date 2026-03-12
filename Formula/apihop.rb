@@ -7,12 +7,12 @@ class Apihop < Formula
   head "https://github.com/saturn4er/apihop.git", branch: "master"
 
   depends_on "rust" => :build
-  depends_on "node" => :build
+  depends_on "oven-sh/bun/bun" => :build
 
   def install
     cd "ui" do
-      system "npm", "install"
-      system "npm", "run", "build"
+      system "bun", "install"
+      system "bun", "run", "build"
     end
     system "cargo", "build", "--release", "-p", "apihop-server"
     bin.install "target/release/apihop-server" => "apihop"

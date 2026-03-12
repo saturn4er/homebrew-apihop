@@ -10,10 +10,9 @@ class Apihop < Formula
   depends_on "node" => :build
 
   def install
-    system "npm", "install", "-g", "bun"
     cd "ui" do
-      system "bun", "install"
-      system "bun", "run", "build"
+      system "npm", "install"
+      system "npm", "run", "build"
     end
     system "cargo", "build", "--release", "-p", "apihop-server"
     bin.install "target/release/apihop-server" => "apihop"

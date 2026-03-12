@@ -1,0 +1,74 @@
+name: brew publish
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bottle:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Cache Homebrew Bundler RubyGems
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.set-up-homebrew.outputs.gems-path }}
+          key: ${{ matrix.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
+          restore-keys: ${{ matrix.os }}-rubygems-
+
+      - run: brew test-bot --only-cleanup-before
+
+      - run: brew test-bot --only-setup
+
+      - name: Build bottle
+        run: |
+          brew test-bot --only-formulae --only-json-tab --root-url="https://github.com/saturn4er/homebrew-apihop/releases/download/v$(brew info --json=v1 saturn4er/apihop/apihop | jq -r '.[0].versions.stable')"
+
+      - name: Upload bottles as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottles_${{ matrix.os }}
+          path: "*.bottle.*"
+
+  upload:
+    needs: bottle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Download bottles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bottles_*
+          merge-multiple: true
+
+      - name: Create GitHub Release for bottles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(brew info --json=v1 saturn4er/apihop/apihop | jq -r '.[0].versions.stable')
+          gh release create "v${version}" --repo saturn4er/homebrew-apihop --title "apihop v${version}" --notes "Bottles for apihop v${version}" *.bottle.tar.gz || \
+          gh release upload "v${version}" --repo saturn4er/homebrew-apihop *.bottle.tar.gz --clobber
+
+      - name: Update formula with bottle block
+        run: |
+          brew bottle --merge --write --no-commit *.bottle.json
+          cd "$(brew --repository saturn4er/apihop)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/apihop.rb
+          git diff --cached --quiet || git commit -m "Add bottle block for apihop"
+          git push
